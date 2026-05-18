@@ -1,7 +1,25 @@
-# facts
+# Description
 
-CLI Rust pour lire et écrire des cartes RFID/NFC via un lecteur **ACR122U** (PC/SC),
-avec support des cartes **MIFARE Classic 1K**.
+`facts` est un utilitaire en ligne de commande écrit en Rust pour lire et
+écrire des cartes RFID/NFC via un lecteur **ACR122U** (PC/SC), avec un
+support de premier ordre pour les cartes **MIFARE Classic 1K**.
+
+L'outil parle directement à la carte en APDU (pas d'abstraction `libnfc`)
+et reste suffisamment minimaliste pour servir aussi bien d'outil pratique
+que de référence sur le protocole.
+
+## Les objectifs
+
+- **Lire** rapidement l'UID, un bloc précis ou un dump complet d'une carte
+  MIFARE Classic 1K.
+- **Écrire** dans n'importe quel bloc de données (16 octets) avec
+  authentification clé A/B.
+- **Documenter** les APDU PC/SC du couple ACR122U + MIFARE Classic dans un
+  code source lisible (≈170 lignes de Rust).
+- **Permettre** la manipulation manuelle de messages NDEF (Text, URI…) en
+  composant le TLV à la main, sans dépendre d'une bibliothèque NDEF.
+- **Servir de base** pour ajouter d'autres familles de cartes (Ultralight,
+  NTAG, DESFire) ou d'autres lecteurs PC/SC.
 
 ## Prérequis
 
