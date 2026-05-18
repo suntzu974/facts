@@ -153,6 +153,39 @@ Bloc 05: 206C65206D6F6E6465FE000000000000
 La carte est ensuite lisible par n'importe quelle app NFC standard (Android,
 NFC Tools, etc.).
 
+## Exemple : lire le texte d'un tag NDEF
+
+Pour récupérer le texte stocké, on lit les blocs à partir du bloc 4 et on
+décode le TLV à la main. L'en-tête d'un record Text avec code langue 2 lettres
+fait **9 octets** (`03 LL D1 01 PL 54 02 L1 L2`) ; le texte commence juste
+après et s'arrête au terminator `FE`.
+
+Décodage à la main, à partir des blocs lus précédemment :
+
+```
+0317D101135402 6672  <- en-tête TLV+record (7 octets) + langue "fr" (2 octets)
+              ^^^^
+              langue
+                    626F6E6A6F7572206C65206D6F6E6465 FE  <- payload + terminator
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                    "bonjour le monde" (UTF-8)
+```
+
+One-liner shell qui lit les deux blocs, retire l'en-tête (18 caractères hex
+= 9 octets pour une langue 2-lettres) et stoppe à `FE` :
+
+```bash
+$ { facts --reader 0 --key-type b read 4 | awk '{print $NF}'; \
+    facts --reader 0 --key-type b read 5 | awk '{print $NF}'; } \
+  | tr -d '\n' | cut -c19- | sed 's/FE.*$//' \
+  | perl -ne 'chomp; print pack("H*", $_)'; echo
+bonjour le monde
+```
+
+> Si le code langue fait 3 lettres (`02 65 6E 67` pour "eng"), l'en-tête fait
+> 10 octets → remplacer `cut -c19-` par `cut -c21-`. Le second octet du record
+> (`PL`) donne la longueur exacte du payload, status byte inclus.
+
 ## APDU utilisés (ACR122U / PC/SC)
 
 | Opération            | APDU                                  |
