@@ -24,25 +24,6 @@ cargo build --release
 
 Binaire : `./target/release/facts`
 
-## Commandes
-
-```bash
-# Lister les lecteurs PC/SC détectés
-facts list
-
-# Lire l'UID de la carte présente
-facts uid
-
-# Lire le bloc 4 (clé par défaut FFFFFFFFFFFF, key A)
-facts read 4
-
-# Écrire 16 octets (32 caractères hex) dans le bloc 4
-facts write 4 00112233445566778899AABBCCDDEEFF
-
-# Dump complet d'une MIFARE Classic 1K (blocs 0 à 63)
-facts dump
-```
-
 ## Options globales
 
 | Option         | Défaut         | Description                              |
@@ -51,11 +32,108 @@ facts dump
 | `--key HEX`    | `FFFFFFFFFFFF` | Clé MIFARE 6 octets (12 hex)             |
 | `--key-type`   | `a`            | `a` ou `b`                               |
 
-Exemple avec clé custom :
+> **Cartes NFC formatées (NDEF)** : les secteurs de données utilisent souvent la
+> clé B `FFFFFFFFFFFF` (clé A non standard). Si l'authentification échoue avec
+> les valeurs par défaut, retentez avec `--key-type b`.
+
+## Commandes
+
+### `list` — lister les lecteurs PC/SC
 
 ```bash
-facts --key A0A1A2A3A4A5 --key-type b read 7
+$ facts list
+[0] ACS ACR122U PICC Interface 00 00
+[1] Alcor Link AK9563 01 00
 ```
+
+L'index entre crochets sert pour `--reader N` (par défaut `0`).
+
+### `uid` — lire l'UID de la carte
+
+```bash
+$ facts --reader 0 uid
+UID: 835A8F60
+```
+
+UID de 4 octets (MIFARE Classic 1K) ou 7 octets (Ultralight/NTAG).
+
+### `read <block>` — lire un bloc (16 octets)
+
+```bash
+$ facts --reader 0 --key-type b read 4
+Bloc 04: 0317D1011354026672626F6E6A6F7572
+```
+
+Numéro de bloc : 0–63 pour une MIFARE Classic 1K. L'authentification se fait
+automatiquement avec `--key` / `--key-type`.
+
+### `write <block> <hex>` — écrire 16 octets dans un bloc
+
+Le hex doit faire exactement 32 caractères (16 octets), **sans espaces** :
+
+```bash
+$ facts --reader 0 --key-type b write 4 0317D1011354026672626F6E6A6F7572
+Bloc 04 écrit.
+```
+
+> ⚠ N'écrivez **jamais** dans un bloc *trailer* (3, 7, 11, … 63) sans connaître
+> précisément les access bits et clés à inscrire — vous pouvez verrouiller
+> définitivement le secteur.
+
+### `dump` — dump complet d'une MIFARE Classic 1K
+
+```bash
+$ facts --reader 0 --key-type b dump
+00: 835A8F6036880400C844002000000015
+01: 140103E103E103E103E103E103E103E1
+02: 03E103E103E103E103E103E103E103E1
+03: 000000000000787788C1000000000000
+04: 0317D1011354026672626F6E6A6F7572
+05: 206C65206D6F6E6465FE000000000000
+...
+63: 0000000000007F078840000000000000
+```
+
+Les blocs dont l'authentification échoue sont marqués `ERREUR (...)` — utile
+pour identifier un secteur dont la clé n'est pas la valeur fournie.
+
+## Exemple : écrire un message NDEF Text
+
+Une MIFARE Classic 1K formatée NFC stocke les données NDEF à partir du
+**bloc 4** (secteur 1, après le MAD). Le format d'un record Text est :
+
+```
+03 LL                           ← NDEF Message TLV (LL = longueur record)
+D1 01 PL 54                     ← record SR, type "T", payload PL octets
+02 <lang1> <lang2>              ← status (UTF-8 + lang 2 chars) + code langue
+<texte UTF-8...>                ← payload texte
+FE                              ← terminator TLV
+```
+
+Pour écrire **« bonjour le monde »** (16 octets de texte, langue `fr`) :
+
+```bash
+# Bloc 4 : 03 17 D1 01 13 54 02 66 72  b  o  n  j  o  u  r
+facts --reader 0 --key-type b write 4 0317D1011354026672626F6E6A6F7572
+
+# Bloc 5 : ' ' l  e  ' ' m  o  n  d  e  FE 00 00 00 00 00 00
+facts --reader 0 --key-type b write 5 206C65206D6F6E6465FE000000000000
+
+# Bloc 6 : effacer tout résidu après le terminator FE
+facts --reader 0 --key-type b write 6 00000000000000000000000000000000
+```
+
+Vérification :
+
+```bash
+$ facts --reader 0 --key-type b read 4
+Bloc 04: 0317D1011354026672626F6E6A6F7572
+$ facts --reader 0 --key-type b read 5
+Bloc 05: 206C65206D6F6E6465FE000000000000
+```
+
+La carte est ensuite lisible par n'importe quelle app NFC standard (Android,
+NFC Tools, etc.).
 
 ## APDU utilisés (ACR122U / PC/SC)
 
