@@ -115,6 +115,28 @@ $ facts --reader 0 --key-type b dump
 Les blocs dont l'authentification échoue sont marqués `ERREUR (...)` — utile
 pour identifier un secteur dont la clé n'est pas la valeur fournie.
 
+### `ndef-text` — lire et décoder un message NDEF Text
+
+Lit les blocs de données à partir du bloc 4 (en sautant les sector trailers),
+parse le TLV NDEF Message et décode le premier record Text rencontré. Sortie :
+
+```bash
+$ facts --reader 0 --key-type b ndef-text
+[fr] bonjour le monde
+```
+
+Le préfixe `[..]` indique le code langue déclaré dans le record. La lecture
+s'arrête au terminator `FE`.
+
+Erreurs possibles :
+
+| Cas                                  | Message                                          |
+|--------------------------------------|--------------------------------------------------|
+| Aucun TLV `0x03` avant `FE`          | `Aucun message NDEF (...)`                       |
+| Record non-Text (URI, MIME, ...)     | `Record non supporté (TNF=..., type=...)`        |
+| Encodage UTF-16                      | `Encodage UTF-16 non supporté`                   |
+| Payload non valide en UTF-8          | `Texte invalide (pas UTF-8)`                     |
+
 ## Exemple : écrire un message NDEF Text
 
 Une MIFARE Classic 1K formatée NFC stocke les données NDEF à partir du
@@ -154,6 +176,10 @@ La carte est ensuite lisible par n'importe quelle app NFC standard (Android,
 NFC Tools, etc.).
 
 ## Exemple : lire le texte d'un tag NDEF
+
+> Pour l'usage pratique, utilisez la commande [`ndef-text`](#ndef-text--lire-et-décoder-un-message-ndef-text)
+> qui automatise tout ce qui suit. Cette section reste utile pour comprendre
+> comment fonctionne le décodage TLV.
 
 Pour récupérer le texte stocké, on lit les blocs à partir du bloc 4 et on
 décode le TLV à la main. L'en-tête d'un record Text avec code langue 2 lettres

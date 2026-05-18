@@ -40,6 +40,8 @@ enum Cmd {
     Write { block: u8, data_hex: String },
     /// Dump complet d'une MIFARE Classic 1K (64 blocs)
     Dump,
+    /// Lit et décode un message NDEF Text stocké sur la carte (à partir du bloc 4)
+    NdefText,
 }
 
 fn main() -> Result<()> {
@@ -87,7 +89,137 @@ fn main() -> Result<()> {
             }
             Ok(())
         }
+        Cmd::NdefText => {
+            let card = connect(&ctx, cli.reader)?;
+            let key = parse_key(&cli.key)?;
+            let mut buf = Vec::new();
+            for block in 4u8..64 {
+                if block % 4 == 3 {
+                    continue; // sauter les sector trailers
+                }
+                authenticate(&card, block, &key, &cli.key_type)?;
+                let data = read_block(&card, block)?;
+                buf.extend_from_slice(&data);
+                if buf.contains(&0xFE) {
+                    break; // terminator TLV trouvé
+                }
+            }
+            let (lang, text) = decode_ndef_text(&buf)?;
+            println!("[{lang}] {text}");
+            Ok(())
+        }
     }
+}
+
+fn decode_ndef_text(buf: &[u8]) -> Result<(String, String)> {
+    let mut i = 0;
+    // Trouver le TLV NDEF Message (tag 0x03), sauter les Null TLV (0x00)
+    while i < buf.len() {
+        match buf[i] {
+            0x00 => i += 1,
+            0x03 => break,
+            0xFE => bail!("Aucun message NDEF (terminator avant TLV 0x03)"),
+            _ => bail!("TLV non supporté avant NDEF Message: 0x{:02X}", buf[i]),
+        }
+    }
+    if i >= buf.len() {
+        bail!("Aucun TLV NDEF Message (0x03) trouvé");
+    }
+    i += 1;
+
+    // Longueur du message (1 ou 3 octets)
+    if i >= buf.len() {
+        bail!("Longueur TLV manquante");
+    }
+    let msg_len = if buf[i] == 0xFF {
+        if i + 3 > buf.len() {
+            bail!("Longueur 3 octets tronquée");
+        }
+        let l = u16::from_be_bytes([buf[i + 1], buf[i + 2]]) as usize;
+        i += 3;
+        l
+    } else {
+        let l = buf[i] as usize;
+        i += 1;
+        l
+    };
+
+    if i + msg_len > buf.len() {
+        bail!("Message NDEF tronqué (déclaré {msg_len} octets, dispo {})", buf.len() - i);
+    }
+    let msg = &buf[i..i + msg_len];
+
+    // Parser l'en-tête du premier record
+    if msg.len() < 2 {
+        bail!("Record NDEF tronqué");
+    }
+    let header = msg[0];
+    let tnf = header & 0x07;
+    let sr = (header & 0x10) != 0;
+    let il = (header & 0x08) != 0;
+    let type_len = msg[1] as usize;
+    let mut idx = 2;
+
+    let payload_len = if sr {
+        if idx >= msg.len() {
+            bail!("Payload length manquant");
+        }
+        let l = msg[idx] as usize;
+        idx += 1;
+        l
+    } else {
+        if idx + 4 > msg.len() {
+            bail!("Payload length 4 octets tronqué");
+        }
+        let l = u32::from_be_bytes([msg[idx], msg[idx + 1], msg[idx + 2], msg[idx + 3]]) as usize;
+        idx += 4;
+        l
+    };
+
+    let id_len = if il {
+        if idx >= msg.len() {
+            bail!("ID length manquant");
+        }
+        let l = msg[idx] as usize;
+        idx += 1;
+        l
+    } else {
+        0
+    };
+
+    if idx + type_len > msg.len() {
+        bail!("Type field tronqué");
+    }
+    let type_field = &msg[idx..idx + type_len];
+    idx += type_len + id_len;
+
+    if idx + payload_len > msg.len() {
+        bail!("Payload tronqué");
+    }
+    let payload = &msg[idx..idx + payload_len];
+
+    if tnf != 0x01 || type_field != b"T" {
+        bail!(
+            "Record non supporté (TNF={tnf:#x}, type={:?}) — seul NDEF Text est géré",
+            String::from_utf8_lossy(type_field)
+        );
+    }
+
+    if payload.is_empty() {
+        bail!("Payload Text vide");
+    }
+    let status = payload[0];
+    if (status & 0x80) != 0 {
+        bail!("Encodage UTF-16 non supporté");
+    }
+    let lang_len = (status & 0x3F) as usize;
+    if 1 + lang_len > payload.len() {
+        bail!("Code langue tronqué");
+    }
+    let lang = String::from_utf8_lossy(&payload[1..1 + lang_len]).into_owned();
+    let text = String::from_utf8(payload[1 + lang_len..].to_vec())
+        .context("Texte invalide (pas UTF-8)")?;
+    Ok((lang, text))
 }
 
 fn list_readers(ctx: &PcscContext) -> Result<()> {
