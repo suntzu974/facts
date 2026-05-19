@@ -10,6 +10,15 @@ there is intentionally no `libnfc` abstraction. The whole tool is a single file
 (`src/main.rs`, ~310 lines) and is meant to double as a readable reference for
 the ACR122U + MIFARE Classic APDU protocol.
 
+**Other readers** (e.g. **Alcor Link AK9563**) are enumerated by PC/SC and the
+CLI will list them, but the MIFARE pseudo-APDUs (`FF 82` / `FF 86` / `FF CA`)
+depend on reader-firmware support. On the AK9563 with a JCOP JavaCard on the
+antenna, `FF CA 00 00 00` returns `SW=6E00` (class unsupported by the card),
+meaning the reader is **not translating** the pseudo-APDU — it forwards it as
+ISO 7816. If `uid` fails with `6E00` on a non-ACR122U reader, that's the
+likely cause; confirm with a real MIFARE Classic 1K card before drawing
+conclusions.
+
 ## Build & run
 
 ```bash

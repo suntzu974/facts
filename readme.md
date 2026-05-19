@@ -25,7 +25,10 @@ que de référence sur le protocole.
 
 - Rust (edition 2024)
 - `pcsc-lite` et son service `pcscd`
-- Lecteur ACR122U branché en USB
+- Un lecteur PC/SC compatible MIFARE Classic, par exemple :
+  - **ACS ACR122U** — référence, supporte tous les pseudo-APDU `FF …`.
+  - **Alcor Link AK9563** — détecté par PC/SC, mais le support des pseudo-APDU
+    MIFARE (`FF 82` / `FF 86` / `FF CA`) n'est pas garanti ; voir *Limites*.
 
 Sur Fedora :
 
@@ -230,6 +233,13 @@ bonjour le monde
 - Pas de découverte automatique des clés (mfoc/mfcuk).
 - Les blocs *trailer* (3, 7, 11, …) contiennent les clés A/B et bits d'accès :
   attention à ne pas y écrire n'importe quoi.
+- Les commandes MIFARE reposent sur des **pseudo-APDU PC/SC** (classe `FF`)
+  interceptées par le firmware du lecteur. L'ACR122U les implémente toutes ;
+  d'autres lecteurs CCID génériques peuvent les laisser passer telles quelles
+  vers la carte, qui répondra alors `SW=6E00`. Observé sur l'**Alcor Link
+  AK9563** avec une carte JavaCard JCOP : `uid` renvoie `6E00`, signe que le
+  pseudo-APDU n'est pas traduit. À vérifier avec une vraie carte MIFARE
+  Classic 1K avant de conclure.
 
 ## Licence
 
