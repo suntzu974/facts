@@ -140,6 +140,31 @@ Erreurs possibles :
 | Encodage UTF-16                      | `Encodage UTF-16 non supporté`                   |
 | Payload non valide en UTF-8          | `Texte invalide (pas UTF-8)`                     |
 
+### `ui` — interface graphique Slint
+
+Lance une fenêtre Slint qui expose les mêmes opérations (UID,
+lecture/écriture de bloc, dump complet, NDEF Text) sans avoir à composer
+les options en ligne de commande.
+
+```bash
+facts ui
+```
+
+La fenêtre comporte :
+
+- un combo **Lecteur** alimenté par PC/SC (bouton *Rafraîchir* pour
+  re-scanner) ;
+- les champs **Clé hex** et **Type** (A/B) appliqués à toutes les
+  opérations ;
+- les boutons **Lire UID**, **Dump complet**, **NDEF Text**, **Lire
+  bloc** et **Écrire bloc** ;
+- une zone de sortie qui accumule les résultats et un statut sous la
+  fenêtre.
+
+Les options globales (`--reader`, `--key`, `--key-type`) sont ignorées
+en mode UI : tout passe par les widgets. Le binaire en release pèse
+~24 Mo car il embarque le renderer Slint (femtovg + winit).
+
 ## Exemple : écrire un message NDEF Text
 
 Une MIFARE Classic 1K formatée NFC stocke les données NDEF à partir du
