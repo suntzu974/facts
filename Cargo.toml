@@ -8,3 +8,7 @@ pcsc = "2.8"
 clap = { version = "4.5", features = ["derive"] }
 anyhow = "1"
 hex = "0.4"
+slint = "1"
+
+[build-dependencies]
+slint-build = "1"

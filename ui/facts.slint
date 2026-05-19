@@ -1,0 +1,104 @@
+import { Button, LineEdit, ComboBox, TextEdit, VerticalBox, HorizontalBox, GroupBox } from "std-widgets.slint";
+
+export component MainWindow inherits Window {
+    title: "facts — MIFARE Classic / ACR122U";
+    preferred-width: 760px;
+    preferred-height: 680px;
+
+    in-out property <[string]> readers;
+    in-out property <int> reader-index: 0;
+    in-out property <string> key-hex: "FFFFFFFFFFFF";
+    in-out property <string> key-type: "A";
+    in-out property <string> block-str: "4";
+    in-out property <string> write-data: "";
+    in-out property <string> output: "";
+    in-out property <string> status: "Prêt.";
+
+    callback refresh-readers();
+    callback read-uid();
+    callback read-block-action();
+    callback write-block-action();
+    callback dump-action();
+    callback ndef-text-action();
+    callback clear-output();
+
+    VerticalBox {
+        padding: 12px;
+        spacing: 10px;
+
+        GroupBox {
+            title: "Lecteur PC/SC";
+            HorizontalBox {
+                ComboBox {
+                    model: root.readers;
+                    current-index <=> root.reader-index;
+                    horizontal-stretch: 1;
+                }
+                Button {
+                    text: "Rafraîchir";
+                    clicked => { root.refresh-readers(); }
+                }
+            }
+        }
+
+        GroupBox {
+            title: "Clé MIFARE";
+            HorizontalBox {
+                Text { text: "Hex (12):"; vertical-alignment: center; }
+                LineEdit {
+                    text <=> root.key-hex;
+                    horizontal-stretch: 1;
+                }
+                Text { text: "Type:"; vertical-alignment: center; }
+                ComboBox {
+                    model: ["A", "B"];
+                    selected(v) => { root.key-type = v; }
+                }
+            }
+        }
+
+        GroupBox {
+            title: "Opérations";
+            VerticalBox {
+                spacing: 6px;
+                HorizontalBox {
+                    Button { text: "Lire UID"; clicked => { root.read-uid(); } }
+                    Button { text: "Dump complet"; clicked => { root.dump-action(); } }
+                    Button { text: "NDEF Text"; clicked => { root.ndef-text-action(); } }
+                    Button { text: "Effacer sortie"; clicked => { root.clear-output(); } }
+                }
+                HorizontalBox {
+                    Text { text: "Bloc:"; vertical-alignment: center; }
+                    LineEdit {
+                        text <=> root.block-str;
+                        horizontal-stretch: 1;
+                    }
+                    Button { text: "Lire bloc"; clicked => { root.read-block-action(); } }
+                }
+                HorizontalBox {
+                    Text { text: "Data (32 hex):"; vertical-alignment: center; }
+                    LineEdit {
+                        text <=> root.write-data;
+                        horizontal-stretch: 2;
+                    }
+                    Button { text: "Écrire bloc"; clicked => { root.write-block-action(); } }
+                }
+            }
+        }
+
+        GroupBox {
+            title: "Sortie";
+            vertical-stretch: 1;
+            TextEdit {
+                text <=> root.output;
+                read-only: true;
+                wrap: word-wrap;
+            }
+        }
+
+        Text {
+            text: root.status;
+            color: #888888;
+        }
+    }
+}

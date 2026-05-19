@@ -2,6 +2,8 @@ use anyhow::{Context, Result, anyhow, bail};
 use clap::{Parser, Subcommand};
 use pcsc::{Card, Context as PcscContext, Protocols, Scope, ShareMode};
 
+mod ui;
+
 #[derive(Parser)]
 #[command(name = "facts", about = "Lecture/écriture RFID via ACR122U (MIFARE Classic)")]
 struct Cli {
@@ -22,7 +24,7 @@ struct Cli {
 }
 
 #[derive(Clone, Default, clap::ValueEnum)]
-enum KeyKind {
+pub(crate) enum KeyKind {
     #[default]
     A,
     B,
@@ -42,10 +44,15 @@ enum Cmd {
     Dump,
     /// Lit et décode un message NDEF Text stocké sur la carte (à partir du bloc 4)
     NdefText,
+    /// Lance l'interface graphique Slint
+    Ui,
 }
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+    if matches!(cli.cmd, Cmd::Ui) {
+        return ui::run();
+    }
     let ctx = PcscContext::establish(Scope::User).context("Impossible d'initialiser PC/SC")?;
 
     match cli.cmd {
@@ -108,10 +115,11 @@ fn main() -> Result<()> {
             println!("[{lang}] {text}");
             Ok(())
         }
+        Cmd::Ui => unreachable!("traité plus haut"),
     }
 }
 
-fn decode_ndef_text(buf: &[u8]) -> Result<(String, String)> {
+pub(crate) fn decode_ndef_text(buf: &[u8]) -> Result<(String, String)> {
     let mut i = 0;
     // Trouver le TLV NDEF Message (tag 0x03), sauter les Null TLV (0x00)
     while i < buf.len() {
@@ -236,7 +244,7 @@ fn list_readers(ctx: &PcscContext) -> Result<()> {
     Ok(())
 }
 
-fn connect(ctx: &PcscContext, index: usize) -> Result<Card> {
+pub(crate) fn connect(ctx: &PcscContext, index: usize) -> Result<Card> {
     let mut buf = [0u8; 2048];
     let reader = ctx
         .list_readers(&mut buf)?
@@ -262,12 +270,12 @@ fn transmit(card: &Card, apdu: &[u8]) -> Result<Vec<u8>> {
     Ok(r[..r.len() - 2].to_vec())
 }
 
-fn get_uid(card: &Card) -> Result<Vec<u8>> {
+pub(crate) fn get_uid(card: &Card) -> Result<Vec<u8>> {
     // FF CA 00 00 00 — Get Data (UID)
     transmit(card, &[0xFF, 0xCA, 0x00, 0x00, 0x00])
 }
 
-fn parse_key(s: &str) -> Result<[u8; 6]> {
+pub(crate) fn parse_key(s: &str) -> Result<[u8; 6]> {
     let v = hex::decode(s).context("Clé hex invalide")?;
     if v.len() != 6 {
         bail!("La clé doit faire 6 octets (12 hex)");
@@ -277,7 +285,7 @@ fn parse_key(s: &str) -> Result<[u8; 6]> {
     Ok(k)
 }
 
-fn authenticate(card: &Card, block: u8, key: &[u8; 6], kind: &KeyKind) -> Result<()> {
+pub(crate) fn authenticate(card: &Card, block: u8, key: &[u8; 6], kind: &KeyKind) -> Result<()> {
     // 1. Charger la clé dans le slot 0 : FF 82 00 00 06 K1..K6
     let mut load = vec![0xFF, 0x82, 0x00, 0x00, 0x06];
     load.extend_from_slice(key);
@@ -295,12 +303,12 @@ fn authenticate(card: &Card, block: u8, key: &[u8; 6], kind: &KeyKind) -> Result
     Ok(())
 }
 
-fn read_block(card: &Card, block: u8) -> Result<Vec<u8>> {
+pub(crate) fn read_block(card: &Card, block: u8) -> Result<Vec<u8>> {
     // FF B0 00 BLK 10 — Read Binary (16 octets)
     transmit(card, &[0xFF, 0xB0, 0x00, block, 0x10])
 }
 
-fn write_block(card: &Card, block: u8, data: &[u8]) -> Result<()> {
+pub(crate) fn write_block(card: &Card, block: u8, data: &[u8]) -> Result<()> {
     // FF D6 00 BLK 10 D1..D16 — Update Binary
     let mut apdu = vec![0xFF, 0xD6, 0x00, block, 0x10];
     apdu.extend_from_slice(data);
