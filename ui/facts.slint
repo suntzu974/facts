@@ -11,6 +11,8 @@ export component MainWindow inherits Window {
     in-out property <string> key-type: "A";
     in-out property <string> block-str: "4";
     in-out property <string> write-data: "";
+    in-out property <string> text-data: "";
+    in-out property <string> text-lang: "fr";
     in-out property <string> output: "";
     in-out property <string> status: "Prêt.";
 
@@ -18,6 +20,7 @@ export component MainWindow inherits Window {
     callback read-uid();
     callback read-block-action();
     callback write-block-action();
+    callback write-text-action();
     callback dump-action();
     callback ndef-text-action();
     callback clear-output();
@@ -82,6 +85,20 @@ export component MainWindow inherits Window {
                         horizontal-stretch: 2;
                     }
                     Button { text: "Écrire bloc"; clicked => { root.write-block-action(); } }
+                }
+                HorizontalBox {
+                    Text { text: "Texte NDEF:"; vertical-alignment: center; }
+                    LineEdit {
+                        text <=> root.text-data;
+                        placeholder-text: "bonjour le monde";
+                        horizontal-stretch: 3;
+                    }
+                    Text { text: "Lang:"; vertical-alignment: center; }
+                    LineEdit {
+                        text <=> root.text-lang;
+                        horizontal-stretch: 0;
+                    }
+                    Button { text: "Écrire texte"; clicked => { root.write-text-action(); } }
                 }
             }
         }

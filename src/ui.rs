@@ -2,7 +2,8 @@ use anyhow::{Context, Result, bail};
 use pcsc::{Context as PcscContext, Scope};
 
 use crate::{
-    KeyKind, authenticate, connect, decode_ndef_text, get_uid, parse_key, read_block, write_block,
+    KeyKind, authenticate, connect, decode_ndef_text, encode_ndef_text, get_uid, parse_key,
+    read_block, write_block,
 };
 
 slint::include_modules!();
@@ -74,6 +75,35 @@ pub(crate) fn run() -> Result<()> {
                     authenticate(&card, block, &key, &kind)?;
                     write_block(&card, block, &data)?;
                     Ok(format!("Bloc {block:02} écrit ({} octets)", data.len()))
+                });
+            }
+        });
+    }
+
+    {
+        let ui_weak = ui.as_weak();
+        ui.on_write_text_action(move || {
+            if let Some(ui) = ui_weak.upgrade() {
+                let text = ui.get_text_data().to_string();
+                let lang = ui.get_text_lang().to_string();
+                run_op(&ui, "WriteText", move |idx, key, kind| {
+                    let buf = encode_ndef_text(text.trim(), lang.trim())?;
+                    let blocks: Vec<u8> = (4u8..64).filter(|b| b % 4 != 3).collect();
+                    let needed = buf.len() / 16;
+                    if needed > blocks.len() {
+                        bail!(
+                            "Texte trop long : {needed} blocs requis, {} disponibles",
+                            blocks.len()
+                        );
+                    }
+                    let ctx = PcscContext::establish(Scope::User)?;
+                    let card = connect(&ctx, idx)?;
+                    for (i, chunk) in buf.chunks(16).enumerate() {
+                        let block = blocks[i];
+                        authenticate(&card, block, &key, &kind)?;
+                        write_block(&card, block, chunk)?;
+                    }
+                    Ok(format!("{needed} bloc(s) écrit(s) à partir du bloc 04"))
                 });
             }
         });

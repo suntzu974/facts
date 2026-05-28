@@ -40,6 +40,17 @@ enum Cmd {
     Read { block: u8 },
     /// Écrit 16 octets (hex, 32 caractères) dans un bloc
     Write { block: u8, data_hex: String },
+    /// Écrit un message NDEF Text (UTF-8) à partir du bloc 4
+    WriteText {
+        /// Texte à écrire (UTF-8)
+        text: String,
+        /// Code langue ISO (max 63 caractères)
+        #[arg(long, default_value = "fr")]
+        lang: String,
+        /// Bloc de départ
+        #[arg(long, default_value_t = 4)]
+        start: u8,
+    },
     /// Dump complet d'une MIFARE Classic 1K (64 blocs)
     Dump,
     /// Lit et décode un message NDEF Text stocké sur la carte (à partir du bloc 4)
@@ -83,6 +94,26 @@ fn main() -> Result<()> {
             println!("Bloc {block:02} écrit.");
             Ok(())
         }
+        Cmd::WriteText { text, lang, start } => {
+            let buf = encode_ndef_text(&text, &lang)?;
+            let blocks: Vec<u8> = (start..64).filter(|b| b % 4 != 3).collect();
+            let needed = buf.len() / 16;
+            if needed > blocks.len() {
+                bail!(
+                    "Texte trop long : nécessite {needed} blocs, disponibles {}",
+                    blocks.len()
+                );
+            }
+            let card = connect(&ctx, cli.reader)?;
+            let key = parse_key(&cli.key)?;
+            for (i, chunk) in buf.chunks(16).enumerate() {
+                let block = blocks[i];
+                authenticate(&card, block, &key, &cli.key_type)?;
+                write_block(&card, block, chunk)?;
+                println!("Bloc {block:02} écrit : {}", hex::encode_upper(chunk));
+            }
+            Ok(())
+        }
         Cmd::Dump => {
             let card = connect(&ctx, cli.reader)?;
             let key = parse_key(&cli.key)?;
@@ -117,6 +148,48 @@ fn main() -> Result<()> {
         }
         Cmd::Ui => unreachable!("traité plus haut"),
     }
+}
+
+pub(crate) fn encode_ndef_text(text: &str, lang: &str) -> Result<Vec<u8>> {
+    let lang_bytes = lang.as_bytes();
+    if lang_bytes.len() > 63 {
+        bail!("Code langue trop long (max 63 octets)");
+    }
+    let text_bytes = text.as_bytes();
+
+    let mut payload = Vec::with_capacity(1 + lang_bytes.len() + text_bytes.len());
+    payload.push(lang_bytes.len() as u8); // bit 7 = 0 → UTF-8
+    payload.extend_from_slice(lang_bytes);
+    payload.extend_from_slice(text_bytes);
+    if payload.len() > 255 {
+        bail!(
+            "Payload trop long ({} octets) — limite 255 pour un Short Record",
+            payload.len()
+        );
+    }
+
+    // NDEF record: MB|ME|SR|TNF=001 = 0xD1, type "T"
+    let mut record = Vec::with_capacity(4 + payload.len());
+    record.extend_from_slice(&[0xD1, 0x01, payload.len() as u8, b'T']);
+    record.extend_from_slice(&payload);
+
+    // NDEF Message TLV (tag 0x03) + terminator (0xFE)
+    let mut buf = Vec::new();
+    buf.push(0x03);
+    if record.len() < 0xFF {
+        buf.push(record.len() as u8);
+    } else {
+        buf.push(0xFF);
+        buf.extend_from_slice(&(record.len() as u16).to_be_bytes());
+    }
+    buf.extend_from_slice(&record);
+    buf.push(0xFE);
+
+    // Padder à un multiple de 16 octets (taille d'un bloc MIFARE Classic).
+    while buf.len() % 16 != 0 {
+        buf.push(0x00);
+    }
+    Ok(buf)
 }
 
 pub(crate) fn decode_ndef_text(buf: &[u8]) -> Result<(String, String)> {
